@@ -21,6 +21,12 @@ def load_mast3r(path=None, device="cuda"):
     return model
 
 
+def _encode_image_bf16(model, img, true_shape):
+    with torch.amp.autocast(device_type="cuda", dtype=torch.float16):
+        feat, pos, extra = model._encode_image(img, true_shape)
+    return feat.float(), pos, extra
+
+
 def load_retriever(mast3r_model, retriever_path=None, device="cuda"):
     retriever_path = (
         "checkpoints/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric_retrieval_trainingfree.pth"
@@ -33,7 +39,8 @@ def load_retriever(mast3r_model, retriever_path=None, device="cuda"):
 
 @torch.inference_mode
 def decoder(model, feat1, feat2, pos1, pos2, shape1, shape2):
-    dec1, dec2 = model._decoder(feat1, pos1, feat2, pos2)
+    with torch.amp.autocast(device_type="cuda", dtype=torch.float16):
+        dec1, dec2 = model._decoder(feat1, pos1, feat2, pos2)
     with torch.amp.autocast(enabled=False, device_type="cuda"):
         res1 = model._downstream_head(1, [tok.float() for tok in dec1], shape1)
         res2 = model._downstream_head(2, [tok.float() for tok in dec2], shape2)
@@ -55,11 +62,11 @@ def downsample(X, C, D, Q):
 @torch.inference_mode
 def mast3r_symmetric_inference(model, frame_i, frame_j):
     if frame_i.feat is None:
-        frame_i.feat, frame_i.pos, _ = model._encode_image(
+        frame_i.feat, frame_i.pos, _ = _encode_image_bf16(model,
             frame_i.img, frame_i.img_true_shape
         )
     if frame_j.feat is None:
-        frame_j.feat, frame_j.pos, _ = model._encode_image(
+        frame_j.feat, frame_j.pos, _ = _encode_image_bf16(model,
             frame_j.img, frame_j.img_true_shape
         )
 
@@ -118,7 +125,7 @@ def mast3r_decode_symmetric_batch(
 @torch.inference_mode
 def mast3r_inference_mono(model, frame):
     if frame.feat is None:
-        frame.feat, frame.pos, _ = model._encode_image(frame.img, frame.img_true_shape)
+        frame.feat, frame.pos, _ = _encode_image_bf16(model,frame.img, frame.img_true_shape)
 
     feat = frame.feat
     pos = frame.pos
@@ -183,11 +190,11 @@ def mast3r_match_symmetric(model, feat_i, pos_i, feat_j, pos_j, shape_i, shape_j
 @torch.inference_mode
 def mast3r_asymmetric_inference(model, frame_i, frame_j):
     if frame_i.feat is None:
-        frame_i.feat, frame_i.pos, _ = model._encode_image(
+        frame_i.feat, frame_i.pos, _ = _encode_image_bf16(model,
             frame_i.img, frame_i.img_true_shape
         )
     if frame_j.feat is None:
-        frame_j.feat, frame_j.pos, _ = model._encode_image(
+        frame_j.feat, frame_j.pos, _ = _encode_image_bf16(model,
             frame_j.img, frame_j.img_true_shape
         )
 
